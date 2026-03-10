@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Heightmap Editor</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        background: #1a1a2e;
+        color: #e0e0e0;
+        font-family: 'Segoe UI', Tahoma, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+        padding: 20px;
+    }
+    h1 {
+        color: #00d4ff;
+        margin-bottom: 10px;
+        font-size: 22px;
+    }
+    .toolbar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    button {
+        background: #16213e;
+        color: #00d4ff;
+        border: 1px solid #00d4ff;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s;
+    }
+    button:hover {
+        background: #00d4ff;
+        color: #1a1a2e;
+    }
+    button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+    button.danger {
+        border-color: #ff4757;
+        color: #ff4757;
+    }
+    button.danger:hover {
+        background: #ff4757;
+        color: #fff;
+    }
+    button.success {
+        border-color: #2ed573;
+        color: #2ed573;
+    }
+    button.success:hover {
+        background: #2ed573;
+        color: #1a1a2e;
+    }
+    label {
+        font-size: 13px;
+        color: #aaa;
+    }
+    input[type="file"] { display: none; }
+    .file-btn {
+        position: relative;
+        overflow: hidden;
+    }
+    .canvas-wrap {
+        position: relative;
+        border: 2px solid #333;
+        border-radius: 4px;
+        cursor: crosshair;
+        margin-bottom: 12px;
+    }
+    canvas {
+        display: block;
+    }
+    .info {
+        display: flex;
+        gap: 20px;
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 8px;
+    }
+    .info span { color: #00d4ff; }
+    .status {
+        font-size: 13px;
+        color: #2ed573;
+        min-height: 20px;
+        margin-bottom: 10px;
+    }
+    .instructions {
+        max-width: 960px;
+        font-size: 13px;
+        color: #666;
+        line-height: 1.6;
+        text-align: center;
+    }
+    .settings {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        font-size: 13px;
+    }
+    .settings input[type="number"] {
+        background: #16213e;
+        border: 1px solid #444;
+        color: #e0e0e0;
+        padding: 4px 8px;
+        border-radius: 3px;
+        width: 70px;
+    }
+</style>
+</head>
+<body>
+
+<h1>Heightmap Editor</h1>
+
+<div class="toolbar">
+    <button id="btnLoad" class="file-btn">Carica Background</button>
+    <input type="file" id="fileInput" accept="image/*">
+    <button id="btnClear" class="danger" disabled>Cancella Linea</button>
+    <button id="btnUndo" disabled>Undo</button>
+    <button id="btnExport" class="success" disabled>Esporta JSON</button>
+</div>
+
+<div class="settings">
+    <label>Canvas W: <input type="number" id="canvasW" value="960"></label>
+    <label>Canvas H: <input type="number" id="canvasH" value="540"></label>
+    <label>Linea: <input type="number" id="lineWidth" value="3" min="1" max="10"></label>
+</div>
+
+<div class="info" id="infoBar" style="margin-top:10px;">
+    <div>Mouse: <span id="mousePos">—</span></div>
+    <div>Punti: <span id="pointCount">0</span></div>
+    <div>Range Y: <span id="rangeY">—</span></div>
+</div>
+
+<div class="status" id="status"></div>
+
+<div class="canvas-wrap" id="canvasWrap">
+    <canvas id="editor" width="960" height="540"></canvas>
+</div>
+
+<div class="instructions">
+    <b>Istruzioni:</b> Carica un'immagine di background. Clicca e trascina per disegnare la linea del terreno da sinistra a destra.
+    La linea deve coprire tutta la larghezza. Poi clicca "Esporta JSON" per salvare la heightmap.
+    <br>Puoi usare Undo per cancellare gli ultimi tratti oppure Cancella Linea per ricominciare.
+</div>
+
+<script>
+const canvas = document.getElementById('editor');
+const ctx = canvas.getContext('2d');
+
+const btnLoad = document.getElementById('btnLoad');
+const btnClear = document.getElementById('btnClear');
+const btnUndo = document.getElementById('btnUndo');
+const btnExport = document.getElementById('btnExport');
+const fileInput = document.getElementById('fileInput');
+const statusEl = document.getElementById('status');
+const mousePosEl = document.getElementById('mousePos');
+const pointCountEl = document.getElementById('pointCount');
+const rangeYEl = document.getElementById('rangeY');
+const canvasWInput = document.getElementById('canvasW');
+const canvasHInput = document.getElementById('canvasH');
+
+let bgImage = null;
+let bgFileName = '';
+let drawing = false;
+
+// Each stroke is an array of {x, y} points
+let strokes = [];
+let currentStroke = [];
+
+// ---- File loading ----
+btnLoad.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    bgFileName = file.name.replace(/\.[^.]+$/, '');
+
+    const img = new Image();
+    img.onload = () => {
+        bgImage = img;
+        canvas.width = parseInt(canvasWInput.value) || 960;
+        canvas.height = parseInt(canvasHInput.value) || 540;
+        strokes = [];
+        currentStroke = [];
+        redraw();
+        updateUI();
+        showStatus(`Caricato: ${file.name} (${img.naturalWidth}x${img.naturalHeight}) → canvas ${canvas.width}x${canvas.height}`);
+    };
+    img.src = URL.createObjectURL(file);
+});
+
+// ---- Drawing ----
+canvas.addEventListener('mousedown', (e) => {
+    if (!bgImage) return;
+    drawing = true;
+    currentStroke = [];
+    addPoint(e);
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    updateMousePos(e);
+    if (!drawing) return;
+    addPoint(e);
+    redraw();
+});
+
+canvas.addEventListener('mouseup', () => {
+    if (!drawing) return;
+    drawing = false;
+    if (currentStroke.length > 1) {
+        strokes.push([...currentStroke]);
+    }
+    currentStroke = [];
+    updateUI();
+});
+
+canvas.addEventListener('mouseleave', () => {
+    if (drawing) {
+        drawing = false;
+        if (currentStroke.length > 1) {
+            strokes.push([...currentStroke]);
+        }
+        currentStroke = [];
+        updateUI();
+    }
+});
+
+function addPoint(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    currentStroke.push({ x, y });
+}
+
+function updateMousePos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    mousePosEl.textContent = `${x}, ${y}`;
+}
+
+// ---- Rendering ----
+function redraw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (bgImage) {
+        ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+    }
+
+    const lw = parseInt(document.getElementById('lineWidth').value) || 3;
+
+    // Draw committed strokes
+    ctx.strokeStyle = 'red';
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (const stroke of strokes) {
+        drawStroke(stroke);
+    }
+
+    // Draw current stroke
+    if (currentStroke.length > 1) {
+        drawStroke(currentStroke);
+    }
+}
+
+function drawStroke(points) {
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.stroke();
+}
+
+// ---- UI updates ----
+function updateUI() {
+    const hasStrokes = strokes.length > 0;
+    btnClear.disabled = !hasStrokes;
+    btnUndo.disabled = !hasStrokes;
+    btnExport.disabled = !hasStrokes;
+
+    const allPoints = strokes.flat();
+    pointCountEl.textContent = allPoints.length;
+
+    if (allPoints.length > 0) {
+        const ys = allPoints.map(p => p.y);
+        rangeYEl.textContent = `${Math.min(...ys)} – ${Math.max(...ys)}`;
+    } else {
+        rangeYEl.textContent = '—';
+    }
+}
+
+// ---- Actions ----
+btnClear.addEventListener('click', () => {
+    strokes = [];
+    currentStroke = [];
+    redraw();
+    updateUI();
+    showStatus('Linea cancellata');
+});
+
+btnUndo.addEventListener('click', () => {
+    strokes.pop();
+    redraw();
+    updateUI();
+    showStatus('Undo: ultimo tratto rimosso');
+});
+
+btnExport.addEventListener('click', () => {
+    const cw = canvas.width;
+    const ch = canvas.height;
+
+    // Merge all strokes into one sorted-by-x list
+    const allPoints = strokes.flat();
+    if (allPoints.length === 0) return;
+
+    // Sort by x
+    allPoints.sort((a, b) => a.x - b.x);
+
+    // Remove duplicates at same x (keep last = most recent draw)
+    const byX = new Map();
+    for (const p of allPoints) {
+        byX.set(p.x, p.y);
+    }
+
+    // Build heightmap: for each canvas column, interpolate
+    const heightmap = [];
+    const xs = [...byX.keys()].sort((a, b) => a - b);
+    const ys = xs.map(x => byX.get(x));
+
+    for (let cx = 0; cx < cw; cx++) {
+        if (byX.has(cx)) {
+            heightmap.push(byX.get(cx));
+        } else {
+            // Linear interpolation between nearest known points
+            let lo = -1, hi = -1;
+            for (let i = 0; i < xs.length; i++) {
+                if (xs[i] <= cx) lo = i;
+                if (xs[i] >= cx && hi === -1) hi = i;
+            }
+
+            if (lo === -1) {
+                heightmap.push(ys[0]);
+            } else if (hi === -1) {
+                heightmap.push(ys[ys.length - 1]);
+            } else if (lo === hi) {
+                heightmap.push(ys[lo]);
+            } else {
+                const t = (cx - xs[lo]) / (xs[hi] - xs[lo]);
+                heightmap.push(Math.round(ys[lo] + t * (ys[hi] - ys[lo])));
+            }
+        }
+    }
+
+    const data = { canvasWidth: cw, canvasHeight: ch, heightmap };
+    const json = JSON.stringify(data);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const name = bgFileName
+        ? `${bgFileName}_heightmap.json`
+        : 'heightmap.json';
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    showStatus(`Esportato: ${name} (min=${Math.min(...heightmap)}, max=${Math.max(...heightmap)})`);
+});
+
+function showStatus(msg) {
+    statusEl.textContent = msg;
+    setTimeout(() => { statusEl.textContent = ''; }, 5000);
+}
+
+// ---- Init ----
+redraw();
+updateUI();
+</script>
+</body>
+</html>
