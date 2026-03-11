@@ -61,7 +61,7 @@ async function initGame() {
     game.levelManager = levelManager;
 
     // Load the first level (FORESTA_VERDE_NOTTE)
-    const level = await levelManager.loadLevelByOrder(4); // TODO: TEST — remove to start at level 1
+    const level = await levelManager.loadLevelByOrder(1); // TODO: TEST — remove to start at level 1
     let collisionMap = level.collisionMap;
     const spawnConfig = level.spawnConfig;
 
@@ -196,15 +196,29 @@ async function initGame() {
         return b;
     }
 
+    /** Pick a random surface and a valid spawn X on that surface. */
+    function pickSpawnSurface(charWidth) {
+        // Sample surfaces at canvas center to get all available platforms
+        const midX = canvas.width / 2;
+        const surfaces = collisionMap.getAllSurfaces(midX);
+        if (surfaces.length === 0) return { groundY: canvas.height, side: 80, extent: { minX: 0, maxX: canvas.width } };
+        const groundY = surfaces[Math.floor(Math.random() * surfaces.length)];
+        const extent = collisionMap.getLayerExtent(midX, groundY);
+        // Pick spawn side within platform bounds
+        const margin = charWidth + 10;
+        const leftSide = extent.minX + 10;
+        const rightSide = Math.max(leftSide, extent.maxX - charWidth - 10);
+        const leftCenter = leftSide + charWidth / 2;
+        const rightCenter = rightSide + charWidth / 2;
+        const chosen = getSpawnSideFarFromMage(leftCenter, rightCenter) === leftCenter ? leftSide : rightSide;
+        return { groundY, side: chosen, extent };
+    }
+
     /** Create & return a Warrior enemy with spawn effect */
     async function spawnWarrior() {
-        // Spawn far from mage
-        const leftSide = 80;
-        const rightSide = canvas.width - 240;
-        const side = getSpawnSideFarFromMage(leftSide + 80, rightSide + 80) === leftSide + 80 ? leftSide : rightSide;
+        const { groundY, side, extent } = pickSpawnSurface(160);
         // Warrior is 160x160
         const centerX = side + 80;
-        const groundY = collisionMap.getGroundY(centerX);
         const charY = groundY - 160;
         const w = new Warrior({ x: side, y: charY });
         w.collisionMap = collisionMap;
@@ -218,7 +232,7 @@ async function initGame() {
             }
         };
         await w.init();
-        w.setupPatrol(30, canvas.width - 200);
+        w.setupPatrol(extent.minX + 10, extent.maxX - 170);
         // Start invisible and frozen in idle
         w.spawning = true;
         w.stateMachine.transition('idle');
@@ -234,19 +248,15 @@ async function initGame() {
 
     /** Create & return an Elf enemy with spawn effect */
     async function spawnElf() {
-        // Spawn far from mage
-        const leftSide = 80;
-        const rightSide = canvas.width - 240;
-        const side = getSpawnSideFarFromMage(leftSide + 80, rightSide + 80) === leftSide + 80 ? leftSide : rightSide;
+        const { groundY, side, extent } = pickSpawnSurface(160);
         // Elf is 160x160
         const centerX = side + 80;
-        const groundY = collisionMap.getGroundY(centerX);
         const charY = groundY - 160;
         const e = new Elf({ x: side, y: charY });
         e.collisionMap = collisionMap;
         e.attackTarget = currentMage;
         await e.init();
-        e.setupPatrol(30, canvas.width - 200);
+        e.setupPatrol(extent.minX + 10, extent.maxX - 170);
         // Start invisible and frozen in idle
         e.spawning = true;
         e.stateMachine.transition('idle');

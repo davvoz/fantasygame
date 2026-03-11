@@ -76,6 +76,56 @@ export class CollisionMap {
     }
 
     /**
+     * Returns all surface Y values at a given X across all layers.
+     * Useful for picking a random spawn platform.
+     * @param {number} x - World X coordinate
+     * @returns {number[]} Array of surface Y values, sorted ascending (topmost first)
+     */
+    getAllSurfaces(x) {
+        const clamped = Math.max(0, Math.min(x, this.#canvasWidth - 1));
+        const idx = Math.floor(clamped);
+        const frac = clamped - idx;
+        const nextIdx = Math.min(idx + 1, this.#canvasWidth - 1);
+
+        const surfaces = [];
+        for (const layer of this.#layers) {
+            const y0 = layer[idx];
+            if (y0 == null) continue;
+            const y1 = layer[nextIdx];
+            surfaces.push(y1 != null ? y0 + (y1 - y0) * frac : y0);
+        }
+        surfaces.sort((a, b) => a - b);
+        return surfaces;
+    }
+
+    /**
+     * Returns the horizontal extent [minX, maxX] of the layer that has a surface
+     * closest to the given Y at the given X. Used for patrol bounds on platforms.
+     * @param {number} x - World X coordinate
+     * @param {number} surfaceY - The surface Y to match
+     * @returns {{ minX: number, maxX: number }}
+     */
+    getLayerExtent(x, surfaceY) {
+        // Find the layer whose value at x is closest to surfaceY
+        const idx = Math.floor(Math.max(0, Math.min(x, this.#canvasWidth - 1)));
+        let bestLayer = null;
+        let bestDist = Infinity;
+        for (const layer of this.#layers) {
+            if (layer[idx] == null) continue;
+            const d = Math.abs(layer[idx] - surfaceY);
+            if (d < bestDist) { bestDist = d; bestLayer = layer; }
+        }
+        if (!bestLayer) return { minX: 0, maxX: this.#canvasWidth - 1 };
+
+        // Walk left/right to find extent of non-null values
+        let minX = idx;
+        while (minX > 0 && bestLayer[minX - 1] != null) minX--;
+        let maxX = idx;
+        while (maxX < this.#canvasWidth - 1 && bestLayer[maxX + 1] != null) maxX++;
+        return { minX, maxX };
+    }
+
+    /**
      * Draw heightmap lines on the canvas for debug purposes.
      * Each layer gets a distinct color.
      */
