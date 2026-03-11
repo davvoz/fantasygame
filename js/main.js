@@ -336,14 +336,15 @@ async function initGame() {
         }
     });
 
-    // Mobile: skip level transition with tap
+    // Mobile: skip level transition with tap (capture phase)
     if (isMobile) {
-        window.addEventListener('touchstart', (e) => {
+        document.addEventListener('touchstart', (e) => {
             if (levelTransitionAnimation && levelTransitionAnimation.alive) {
                 e.preventDefault();
+                e.stopImmediatePropagation();
                 levelTransitionAnimation.skip();
             }
-        }, { passive: false });
+        }, { passive: false, capture: true });
     }
 
     async function transitionToNextLevel() {
@@ -485,14 +486,15 @@ async function initGame() {
         }
     });
 
-    // Mobile: tap to restart after game over
+    // Mobile: tap to restart after game over (capture phase to beat control stopPropagation)
     if (isMobile) {
-        window.addEventListener('touchstart', (e) => {
+        document.addEventListener('touchstart', (e) => {
             if (gameOverAnimation && gameOverAnimation.alive && gameOverAnimation.waitingForInput) {
                 e.preventDefault();
+                e.stopImmediatePropagation();
                 gameOverAnimation.playAgain();
             }
-        }, { passive: false });
+        }, { passive: false, capture: true });
     }
 
     // Mage death check spawner (shows game over)
