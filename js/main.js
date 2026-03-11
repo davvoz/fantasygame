@@ -13,6 +13,9 @@ import { TitleAnimation } from './entities/effects/TitleAnimation.js';
 import { GameOverAnimation } from './entities/effects/GameOverAnimation.js';
 import { LevelTransitionAnimation } from './entities/effects/LevelTransitionAnimation.js';
 import { LevelManager } from './levels/index.js';
+import { MobileControls } from './input/MobileControls.js';
+
+const isMobile = MobileControls.isMobile();
 
 const canvas = document.getElementById('gameCanvas');
 canvas.width  = 960;
@@ -39,13 +42,25 @@ const titleAnimation = new TitleAnimation(canvas.width, canvas.height, () => {
 }, font);
 game.addEntity(titleAnimation);
 
-// Skip intro with SPACE or ENTER
+// Skip intro with SPACE or ENTER (keyboard)
 const skipHandler = (e) => {
     if ((e.code === 'Space' || e.code === 'Enter') && titleAnimation.alive && !gameInitialized) {
         titleAnimation.skip();
     }
 };
 window.addEventListener('keydown', skipHandler);
+
+// Skip intro with tap (mobile)
+if (isMobile) {
+    canvas.addEventListener('touchstart', function skipTouch(e) {
+        if (titleAnimation.alive && !gameInitialized) {
+            e.preventDefault();
+            titleAnimation.skip();
+        } else {
+            canvas.removeEventListener('touchstart', skipTouch);
+        }
+    }, { passive: false });
+}
 
 // Start the game loop (title animation plays first)
 game.start();
@@ -114,6 +129,18 @@ async function initGame() {
     };
     window.addEventListener('keydown', firstLevelIntroSkipHandler);
 
+    // Mobile: skip first level intro with tap
+    if (isMobile) {
+        canvas.addEventListener('touchstart', function skipLevelIntroTouch(e) {
+            if (firstLevelIntro && firstLevelIntro.alive) {
+                e.preventDefault();
+                firstLevelIntro.skip();
+            } else {
+                canvas.removeEventListener('touchstart', skipLevelIntroTouch);
+            }
+        }, { passive: false });
+    }
+
     // Create mage (but don't spawn effect yet - wait for intro)
     const mage = new Mage({ x: 400, y: 0 });
     mage.collisionMap = collisionMap;
@@ -129,9 +156,16 @@ async function initGame() {
     hud.mage = mage;
     game.hud = hud;
 
-    // Crosshair
-    const crosshair = new Crosshair(game.inputManager);
-    game.crosshair = crosshair;
+    // Crosshair (hidden on mobile — touch aim replaces it)
+    if (!isMobile) {
+        const crosshair = new Crosshair(game.inputManager);
+        game.crosshair = crosshair;
+    }
+
+    // Mobile touch controls
+    if (isMobile) {
+        new MobileControls(game.inputManager, canvas);
+    }
 
     // ── Spawn system ─────────────────────────────────────────────
     let currentMage = mage;
@@ -302,6 +336,16 @@ async function initGame() {
         }
     });
 
+    // Mobile: skip level transition with tap
+    if (isMobile) {
+        window.addEventListener('touchstart', (e) => {
+            if (levelTransitionAnimation && levelTransitionAnimation.alive) {
+                e.preventDefault();
+                levelTransitionAnimation.skip();
+            }
+        }, { passive: false });
+    }
+
     async function transitionToNextLevel() {
         if (levelTransitionInProgress) return;
         levelTransitionInProgress = true;
@@ -441,6 +485,16 @@ async function initGame() {
         }
     });
 
+    // Mobile: tap to restart after game over
+    if (isMobile) {
+        window.addEventListener('touchstart', (e) => {
+            if (gameOverAnimation && gameOverAnimation.alive && gameOverAnimation.waitingForInput) {
+                e.preventDefault();
+                gameOverAnimation.playAgain();
+            }
+        }, { passive: false });
+    }
+
     // Mage death check spawner (shows game over)
     game.addSpawner(
         () => !currentMage.alive && !gameOverShown,
@@ -494,4 +548,15 @@ async function initGame() {
             }
         }
     });
+
+    // Mobile: auto-request fullscreen on first touch
+    if (isMobile) {
+        const enterFullscreen = () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            }
+            window.removeEventListener('touchstart', enterFullscreen);
+        };
+        window.addEventListener('touchstart', enterFullscreen, { once: true });
+    }
 }

@@ -11,6 +11,9 @@ body {
     align-items: center;
     min-height: 100vh;
     overflow: hidden;
+    /* Prevent pull-to-refresh and overscroll on mobile */
+    overscroll-behavior: none;
+    touch-action: none;
 }
 
 canvas {
@@ -22,4 +25,185 @@ canvas {
     height: calc(100vw * 9 / 16);
     max-height: 100vh;
     max-width: calc(100vh * 16 / 9);
+}
+
+/* ══════════════════════════════════════════════
+   ROTATE DEVICE OVERLAY (portrait on mobile)
+   ══════════════════════════════════════════════ */
+
+#rotateOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #0a0a1a;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.rotate-content {
+    text-align: center;
+    color: #c0c0ff;
+    font-family: sans-serif;
+}
+
+.rotate-content p {
+    margin-top: 24px;
+    font-size: 22px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.rotate-phone {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.phone-body {
+    width: 48px;
+    height: 80px;
+    border: 3px solid #c0c0ff;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: rotatePhone 2s ease-in-out infinite;
+}
+
+.phone-screen {
+    width: 34px;
+    height: 58px;
+    background: #1a1a4e;
+    border-radius: 3px;
+}
+
+.rotate-arrow {
+    font-size: 48px;
+    color: #ffb347;
+    animation: pulseArrow 2s ease-in-out infinite;
+}
+
+@keyframes rotatePhone {
+    0%, 30%  { transform: rotate(0deg); }
+    50%, 80% { transform: rotate(90deg); }
+    100%     { transform: rotate(0deg); }
+}
+
+@keyframes pulseArrow {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 1; }
+}
+
+/* Show rotate overlay on mobile portrait */
+@media (pointer: coarse) and (orientation: portrait) {
+    #rotateOverlay {
+        display: flex !important;
+    }
+    #mobileControls {
+        display: none !important;
+    }
+}
+
+/* ══════════════════════════════════════════════
+   MOBILE TOUCH CONTROLS
+   ══════════════════════════════════════════════ */
+
+#mobileControls {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none; /* let canvas show through */
+}
+
+/* VIRTUAL JOYSTICK */
+.joystick-zone {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 45%;
+    height: 100%;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+.joystick-base {
+    position: absolute;
+    left: 24px;
+    bottom: 24px;
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.joystick-thumb {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 38%, rgba(255, 179, 71, 0.7), rgba(255, 140, 0, 0.45));
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    pointer-events: none;
+    transition: transform 0.05s;
+    will-change: transform;
+}
+
+.joystick-base.active {
+    border-color: rgba(255, 179, 71, 0.5);
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.joystick-base.active .joystick-thumb {
+    background: radial-gradient(circle at 40% 38%, rgba(255, 179, 71, 0.9), rgba(255, 140, 0, 0.7));
+    border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* BLOCK BUTTON */
+.btn-block {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    width: 56px;
+    height: 56px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.35);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.08s, border-color 0.08s;
+}
+
+.btn-block.active {
+    background: rgba(100, 180, 255, 0.45);
+    border-color: #64b4ff;
+    color: #fff;
+}
+
+/* FIRE ZONE (right side: tap to aim + shoot) */
+.fire-zone {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 55%;
+    height: 100%;
+    pointer-events: auto;
+    touch-action: none;
+    /* push fire zone behind the block button */
+    z-index: -1;
 }

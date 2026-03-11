@@ -2,12 +2,37 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Fantasy Game</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+
+    <!-- Mobile: rotate device overlay (portrait mode) -->
+    <div id="rotateOverlay">
+        <div class="rotate-content">
+            <div class="rotate-phone">
+                <div class="phone-body">
+                    <div class="phone-screen"></div>
+                </div>
+                <div class="rotate-arrow">&#x21BB;</div>
+            </div>
+            <p>Ruota il dispositivo</p>
+        </div>
+    </div>
+
+    <!-- Mobile: touch controls -->
+    <div id="mobileControls">
+        <div id="joystickZone" class="joystick-zone">
+            <div id="joystickBase" class="joystick-base">
+                <div id="joystickThumb" class="joystick-thumb"></div>
+            </div>
+        </div>
+        <button id="btnBlock" class="btn-block" aria-label="Block">&#x1F6E1;</button>
+        <div id="fireZone" class="fire-zone"></div>
+    </div>
+
     <script type="module" src="js/main.js"></script>
 </body>
 </html>

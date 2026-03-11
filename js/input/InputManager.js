@@ -72,6 +72,21 @@ export class InputManager {
         });
     }
 
+    /* ---- programmatic activation (for touch controls) ---- */
+
+    activate(action) {
+        this.#activeActions.add(action);
+    }
+
+    deactivate(action) {
+        this.#activeActions.delete(action);
+    }
+
+    setMousePosition(x, y) {
+        this.#mouseX = x;
+        this.#mouseY = y;
+    }
+
     /* ---- queries ---- */
 
     isActive(action) {
