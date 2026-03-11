@@ -100,14 +100,21 @@ export class Character extends Entity {
     #snapToGround() {
         if (!this.#collisionMap || this.#airborne) return;
         const feetX = this.x + this.width / 2;
-        const groundY = this.#collisionMap.getGroundY(feetX);
+        const feetY = this.y + this.height;
+        const groundY = this.#collisionMap.getGroundY(feetX, feetY);
         this.y = groundY - this.height;
+    }
+
+    /** Public ground snap — call from subclass overrides of update(). */
+    snapToGround() {
+        this.#snapToGround();
     }
 
     getGroundY() {
         if (!this.#collisionMap) return this.y + this.height;
         const feetX = this.x + this.width / 2;
-        return this.#collisionMap.getGroundY(feetX);
+        const feetY = this.y + this.height;
+        return this.#collisionMap.getGroundY(feetX, feetY);
     }
 
     takeDamage(amount = 10) {

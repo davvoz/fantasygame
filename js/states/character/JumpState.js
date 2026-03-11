@@ -12,7 +12,7 @@ export class JumpState extends State {
         this.#hasLanded = false;
         const ch = this.character;
         ch.airborne = true;
-        ch.velocityY = JUMP_VELOCITY;
+        ch.velocityY = ch.jumpVelocity ?? JUMP_VELOCITY;
         ch.animator.play(`JUMP_${ch.direction}`);
     }
 

@@ -188,8 +188,9 @@ export class PowerUp extends Entity {
             this.x += this.#vx * dt;
 
             const footX = this.x + this.width / 2;
+            const footY = this.y + this.height;
             const groundY = this.#collisionMap
-                ? this.#collisionMap.getGroundY(footX) - this.height
+                ? this.#collisionMap.getGroundY(footX, footY) - this.height
                 : 540 - this.height;
             if (this.y >= groundY) {
                 this.y = groundY;

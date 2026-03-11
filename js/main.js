@@ -1,8 +1,5 @@
 import { Game } from './core/Game.js';
-import { Background } from './entities/Background.js';
-import { AmbientParticles } from './entities/effects/AmbientParticles.js';
 import { FogLayer } from './entities/effects/FogLayer.js';
-import { CollisionMap } from './physics/CollisionMap.js';
 import { Mage } from './entities/characters/Mage.js';
 import { Bat } from './entities/characters/Bat.js';
 import { Warrior } from './entities/characters/Warrior.js';
@@ -14,6 +11,8 @@ import { FloatingLabel } from './entities/effects/FloatingLabel.js';
 import { SpawnEffect } from './entities/effects/SpawnEffect.js';
 import { TitleAnimation } from './entities/effects/TitleAnimation.js';
 import { GameOverAnimation } from './entities/effects/GameOverAnimation.js';
+import { LevelTransitionAnimation } from './entities/effects/LevelTransitionAnimation.js';
+import { LevelManager } from './levels/index.js';
 
 const canvas = document.getElementById('gameCanvas');
 canvas.width  = 960;
@@ -55,36 +54,73 @@ game.start();
 // GAME INITIALIZATION - Called after title animation completes
 // ═══════════════════════════════════════════════════════════════
 async function initGame() {
-    // Background first so it draws behind everything
-    const bg = new Background('assets/spritesheets/backgrounds/FORESTA_VERDE_NOTTE.png', canvas.width, canvas.height);
-    await bg.load();
-    game.addEntity(bg);
+    // ═══════════════════════════════════════════════════════════════
+    // LEVEL SYSTEM - Load first level using LevelManager
+    // ═══════════════════════════════════════════════════════════════
+    const levelManager = new LevelManager(game, canvas.width, canvas.height);
+    game.levelManager = levelManager;
 
-    // Ambient effects (between background and character)
-    const particles = new AmbientParticles(canvas.width, canvas.height, 35);
-    game.addEntity(particles);
+    // Load the first level (FORESTA_VERDE_NOTTE)
+    const level = await levelManager.loadLevelByOrder(4); // TODO: TEST — remove to start at level 1
+    let collisionMap = level.collisionMap;
+    const spawnConfig = level.spawnConfig;
 
-    // Load collision map
-    const collisionMap = new CollisionMap();
-    await collisionMap.load('assets/maps/FORESTA_VERDE_NOTTE_heightmap.json');
-    game.collisionMap = collisionMap;
+    console.log(`📍 Level 1: ${level.name} (Kill ${spawnConfig.killsToComplete} enemies)`);
 
+    // ═══════════════════════════════════════════════════════════════
+    // LEVEL 1 INTRO ANIMATION
+    // ═══════════════════════════════════════════════════════════════
+    let gameReady = false;
+    let firstLevelIntroSkipHandler = null;
+
+    const startGameAfterIntro = () => {
+        if (gameReady) return;
+        gameReady = true;
+
+        // Spawn mage with effect
+        const mageCenterX = 400 + 90;
+        const mageGroundY = collisionMap.getGroundY(mageCenterX);
+        mage.spawning = true;
+        mage.stateMachine.transition('idle');
+        const mageSpawnEffect = new SpawnEffect(mageCenterX, mageGroundY, {
+            color: '#39ff14',
+            height: 180,
+            onComplete: () => { mage.spawning = false; }
+        });
+        game.addEntity(mageSpawnEffect);
+
+        // Remove skip handler
+        if (firstLevelIntroSkipHandler) {
+            window.removeEventListener('keydown', firstLevelIntroSkipHandler);
+        }
+    };
+
+    const firstLevelIntro = new LevelTransitionAnimation(
+        canvas.width,
+        canvas.height,
+        level.config,
+        font,
+        startGameAfterIntro
+    );
+    game.addEntity(firstLevelIntro);
+
+    // Skip handler for first level intro
+    firstLevelIntroSkipHandler = (e) => {
+        if (firstLevelIntro && firstLevelIntro.alive) {
+            if (e.code === 'Space' || e.code === 'Enter') {
+                firstLevelIntro.skip();
+            }
+        }
+    };
+    window.addEventListener('keydown', firstLevelIntroSkipHandler);
+
+    // Create mage (but don't spawn effect yet - wait for intro)
     const mage = new Mage({ x: 400, y: 0 });
     mage.collisionMap = collisionMap;
     mage.font = font;
     await mage.init();
-    // Spawn effect for initial mage (mage is 180x180)
-    const mageCenterX = 400 + 90;
-    const mageGroundY = collisionMap.getGroundY(mageCenterX);
-    mage.spawning = true;
+    mage.spawning = true; // Keep frozen until intro finishes
     mage.stateMachine.transition('idle');
-    const mageSpawnEffect = new SpawnEffect(mageCenterX, mageGroundY, {
-        color: '#39ff14', // green for mage
-        height: 180,
-        onComplete: () => { mage.spawning = false; }
-    });
-    game.addEntity(mageSpawnEffect);
-
     game.addEntity(mage);
 
     // HUD
@@ -102,9 +138,13 @@ async function initGame() {
     game.mage = mage;
     const enemies = [];          // all alive enemies
     let enemySerial = 0;         // progressive label counter
+    let levelKills = 0;          // kills in current level
 
-    const MAX_ENEMIES  = 3;      // hard cap on screen
-    const SPAWN_DELAY  = 2500;   // ms between spawn checks
+    // Use level's spawn configuration (will be updated on level change)
+    let currentSpawnConfig = spawnConfig;
+    let MAX_ENEMIES  = currentSpawnConfig.maxEnemies;
+    let SPAWN_DELAY  = currentSpawnConfig.spawnDelay;
+    let KILLS_TO_COMPLETE = currentSpawnConfig.killsToComplete;
 
     // Weighted enemy types — pick randomly each spawn
     const ENEMY_TYPES = [
@@ -223,6 +263,96 @@ async function initGame() {
     const SPAWN_FNS = { bat: spawnBat, warrior: spawnWarrior, elf: spawnElf };
 
     // ═══════════════════════════════════════════════════════════════
+    // LEVEL PROGRESSION SYSTEM
+    // ═══════════════════════════════════════════════════════════════
+    let levelTransitionInProgress = false;
+    let levelTransitionAnimation = null;
+
+    /** Show level intro animation, then call callback */
+    function showLevelIntro(level, onComplete) {
+        levelTransitionAnimation = new LevelTransitionAnimation(
+            canvas.width,
+            canvas.height,
+            level.config,
+            font,
+            () => {
+                levelTransitionAnimation = null;
+                if (onComplete) onComplete();
+            }
+        );
+        game.addEntity(levelTransitionAnimation);
+    }
+
+    // Skip level intro with SPACE
+    window.addEventListener('keydown', (e) => {
+        if (levelTransitionAnimation && levelTransitionAnimation.alive) {
+            if (e.code === 'Space' || e.code === 'Enter') {
+                levelTransitionAnimation.skip();
+            }
+        }
+    });
+
+    async function transitionToNextLevel() {
+        if (levelTransitionInProgress) return;
+        levelTransitionInProgress = true;
+
+        // Clear all enemies — mark dead and remove from tracking
+        for (const e of enemies) {
+            if (e.alive !== false) {
+                e.hp = 0;
+                if (e.kill) e.kill();
+            }
+            hud.untrack(e);
+        }
+        enemies.length = 0;
+
+        // Freeze mage during transition
+        currentMage.spawning = true;
+
+        // Load next level (this loads background, collision map, etc.)
+        const nextLevel = await levelManager.nextLevel();
+        
+        if (!nextLevel) {
+            // Game completed! All levels done
+            console.log('🎉 All levels completed!');
+            currentMage.spawning = false;
+            levelTransitionInProgress = false;
+            // TODO: Show victory screen
+            return;
+        }
+
+        // Show level intro animation
+        showLevelIntro(nextLevel, () => {
+            // Update spawn config from new level
+            currentSpawnConfig = nextLevel.spawnConfig;
+            MAX_ENEMIES = currentSpawnConfig.maxEnemies;
+            SPAWN_DELAY = currentSpawnConfig.spawnDelay;
+            KILLS_TO_COMPLETE = currentSpawnConfig.killsToComplete;
+            
+            // Reset counters for new level
+            levelKills = 0;
+            enemySerial = 0;
+
+            // Update collision map reference for mage and spawn functions
+            collisionMap = nextLevel.collisionMap;
+            currentMage.collisionMap = collisionMap;
+
+            // Unfreeze mage
+            currentMage.spawning = false;
+
+            console.log(`📍 Level ${nextLevel.order}: ${nextLevel.name} (Kill ${KILLS_TO_COMPLETE} enemies)`);
+            levelTransitionInProgress = false;
+        });
+    }
+
+    // Check for level completion
+    function checkLevelCompletion() {
+        if (KILLS_TO_COMPLETE && levelKills >= KILLS_TO_COMPLETE && !levelTransitionInProgress) {
+            transitionToNextLevel();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     // GAME OVER & RESPAWN SYSTEM
     // ═══════════════════════════════════════════════════════════════
     let gameOverAnimation = null;
@@ -239,8 +369,17 @@ async function initGame() {
         }
         enemies.length = 0;
         
-        // Reset enemy serial counter
+        // Reset counters
         enemySerial = 0;
+        levelKills = 0;
+
+        // Reload first level
+        const firstLevel = await levelManager.loadFirstLevel();
+        collisionMap = firstLevel.collisionMap;
+        currentSpawnConfig = firstLevel.spawnConfig;
+        MAX_ENEMIES = currentSpawnConfig.maxEnemies;
+        SPAWN_DELAY = currentSpawnConfig.spawnDelay;
+        KILLS_TO_COMPLETE = currentSpawnConfig.killsToComplete;
         
         // Create fresh mage
         const newMage = new Mage({ x: 400, y: 0 });
@@ -268,6 +407,8 @@ async function initGame() {
         
         gameOverShown = false;
         gameOverAnimation = null;
+
+        console.log(`📍 Level 1: ${firstLevel.name} (Kill ${KILLS_TO_COMPLETE} enemies)`);
     }
 
     function showGameOver() {
@@ -302,12 +443,19 @@ async function initGame() {
     // Enemy spawner — keeps exactly up to MAX_ENEMIES alive at all times
     game.addSpawner(
         () => {
-            // Don't spawn during game over
-            if (gameOverShown) return false;
-            // Purge dead enemies
+            // Don't spawn during game over, level transition, or before game is ready
+            if (gameOverShown || levelTransitionInProgress || !gameReady) return false;
+            // Don't spawn if level transition animation is playing
+            if (levelTransitionAnimation && levelTransitionAnimation.alive) return false;
+            // Purge dead enemies and count kills
             for (let i = enemies.length - 1; i >= 0; i--) {
-                if (!enemies[i].alive) enemies.splice(i, 1);
+                if (!enemies[i].alive) {
+                    enemies.splice(i, 1);
+                    levelKills++;
+                }
             }
+            // Check if level completed (after loop to avoid mutating array mid-iteration)
+            checkLevelCompletion();
             return enemies.length < MAX_ENEMIES;
         },
         async () => {

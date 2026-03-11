@@ -67,6 +67,15 @@ export class Game {
         this.#entities.push(entity);
     }
 
+    /**
+     * Insert entity at the beginning of the entity list.
+     * Useful for background/environment entities that should render behind everything.
+     * @param {Entity} entity 
+     */
+    insertEntityAtStart(entity) {
+        this.#entities.unshift(entity);
+    }
+
     removeEntity(entity) {
         const idx = this.#entities.indexOf(entity);
         if (idx !== -1) this.#entities.splice(idx, 1);
@@ -254,6 +263,10 @@ export class Game {
         for (const entity of this.#entities) {
             entity.draw(this.#renderer.ctx);
         }
+        // Debug: draw heightmap lines
+        //if (this.#collisionMap) {
+          //  this.#collisionMap.debugDraw(this.#renderer.ctx);
+       // }
         if (this.#hud) this.#hud.draw(this.#renderer.ctx);
         if (this.#crosshair) this.#crosshair.draw(this.#renderer.ctx);
     }

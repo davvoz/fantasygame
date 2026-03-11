@@ -63,15 +63,15 @@ export class Elf extends Character {
 
     /** Set up patrol waypoints + ranged attack checks after positioning. */
     setupPatrol(leftX, rightX) {
-        const y = this.y;
         this.#patrol = new PatrolBehavior({
             waypoints: [
-                { x: rightX, y },
-                { x: leftX, y },
+                { x: rightX, y: 0 },
+                { x: leftX, y: 0 },
             ],
             loop: true,
             attackTarget: this.#attackTarget,
             attackRange: 280, // shoots from further away than warrior
+            groundBased: true,
         });
         this.#ai = new AIController(this, [this.#patrol]);
     }
@@ -83,5 +83,6 @@ export class Elf extends Character {
         }
         this.stateMachine.update(deltaTime);
         this.animator.update(deltaTime);
+        this.snapToGround();
     }
 }

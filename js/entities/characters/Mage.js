@@ -37,6 +37,7 @@ export class Mage extends Character {
         super({ width: 180, height: 180, speed: 200, ...opts });
         // Tighter hitbox: centered body area, shifted down
         this.hitbox = { offsetX: 0.35, offsetY: 0.35, w: 0.3, h: 0.55 };
+        this.jumpVelocity = -620;
     }
 
     async init() {

@@ -22,13 +22,15 @@ export class PatrolBehavior extends Behavior {
     #attackTarget = null;
     #attackRange;
     #attackCooldown = 0;
+    #groundBased;
 
-    constructor({ waypoints, loop = true, attackTarget = null, attackRange = 120 } = {}) {
+    constructor({ waypoints, loop = true, attackTarget = null, attackRange = 120, groundBased = false } = {}) {
         super();
         this.#waypoints = waypoints;
         this.#loop = loop;
         this.#attackTarget = attackTarget;
         this.#attackRange = attackRange;
+        this.#groundBased = groundBased;
     }
 
     set attackTarget(t) { this.#attackTarget = t; }
@@ -46,16 +48,18 @@ export class PatrolBehavior extends Behavior {
         if (this.#tryAttack(character)) return;
 
         const target = this.#waypoints[this.#waypointIndex];
-        const dx = target.x - character.x;
-        const dy = target.y - character.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
         const step = character.speed * deltaTime;
+
+        // Ground-based characters: move only along X, snapToGround handles Y
+        const dx = target.x - character.x;
+        const dist = this.#groundBased
+            ? Math.abs(dx)
+            : Math.sqrt(dx * dx + (target.y - character.y) ** 2);
 
         if (dist <= step) {
             // Arrived at waypoint
             character.x = target.x;
-            character.y = target.y;
+            if (!this.#groundBased) character.y = target.y;
             this.#waypointIndex++;
 
             if (this.#waypointIndex >= this.#waypoints.length) {
@@ -69,9 +73,13 @@ export class PatrolBehavior extends Behavior {
             this.#faceTarget(character);
         } else {
             // Move toward waypoint
-            const ratio = step / dist;
-            character.x += dx * ratio;
-            character.y += dy * ratio;
+            if (this.#groundBased) {
+                character.x += Math.sign(dx) * step;
+            } else {
+                const ratio = step / dist;
+                character.x += dx * ratio;
+                character.y += (target.y - character.y) * ratio;
+            }
             // Ensure walk animation stays active (e.g. after takeDamage reset)
             const dir = target.x < character.x ? Direction.LEFT : Direction.RIGHT;
             character.direction = dir;
