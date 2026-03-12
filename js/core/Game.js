@@ -63,6 +63,14 @@ export class Game {
         this.#spawners.push({ isDead, onSpawn, delay, timer: 0, waiting: false, spawning: false });
     }
 
+    /** Reset all spawner timers so nothing fires until conditions are met again. */
+    resetSpawners() {
+        for (const s of this.#spawners) {
+            s.waiting = false;
+            s.timer = 0;
+        }
+    }
+
     addEntity(entity) {
         this.#entities.push(entity);
     }

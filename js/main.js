@@ -6,6 +6,8 @@ import { Warrior } from './entities/characters/Warrior.js';
 import { Elf } from './entities/characters/Elf.js';
 import { BitmapFont } from './graphics/BitmapFont.js';
 import { HUD } from './ui/HUD.js';
+import { CelebrationScene } from './entities/effects/CelebrationScene.js';
+import { SceneTransition } from './entities/effects/SceneTransition.js';
 import { Crosshair } from './ui/Crosshair.js';
 import { FloatingLabel } from './entities/effects/FloatingLabel.js';
 import { SpawnEffect } from './entities/effects/SpawnEffect.js';
@@ -364,9 +366,69 @@ async function initGame() {
         // Freeze mage during transition
         currentMage.spawning = true;
 
-        // Load next level (this loads background, collision map, etc.)
-        const nextLevel = await levelManager.nextLevel();
-        
+        // Cancel any in-flight spawner timers
+        game.resetSpawners();
+
+        // Get theme color from current level for transition effects
+        const currentLevel = levelManager.currentLevel;
+        const themeColor = currentLevel?.config?.theme?.primaryColor ?? '#39ff14';
+
+        // Persistent black overlay — covers gaps between animation phases
+        const blackOverlay = { alive: true, x: 0, y: 0, width: canvas.width, height: canvas.height,
+            update() {},
+            draw(ctx) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+        };
+        game.addEntity(blackOverlay);
+
+        // ── STEP 1: Celebration Scene ─────────────────────────────
+        await new Promise((resolve) => {
+            const celebration = new CelebrationScene(
+                canvas.width, canvas.height,
+                currentLevel.config,
+                font,
+                levelKills,
+                resolve
+            );
+            game.addEntity(celebration);
+
+            // Allow skipping celebration
+            const skipCeleb = (e) => {
+                if (celebration.alive && (e.code === 'Space' || e.code === 'Enter')) {
+                    celebration.skip();
+                    window.removeEventListener('keydown', skipCeleb);
+                }
+            };
+            window.addEventListener('keydown', skipCeleb);
+
+            if (isMobile) {
+                const skipCelebTouch = (e) => {
+                    if (celebration.alive) {
+                        e.preventDefault();
+                        celebration.skip();
+                        document.removeEventListener('touchstart', skipCelebTouch, true);
+                    }
+                };
+                document.addEventListener('touchstart', skipCelebTouch, { passive: false, capture: true });
+            }
+        });
+
+        // ── STEP 2: Diamond Wipe Transition ──────────────────────
+        // Preload next level during the covered phase
+        let nextLevel = null;
+
+        await new Promise((resolve) => {
+            const wipe = new SceneTransition(
+                canvas.width, canvas.height,
+                themeColor,
+                async () => {
+                    // Screen fully covered — load next level now
+                    nextLevel = await levelManager.nextLevel();
+                },
+                resolve
+            );
+            game.addEntity(wipe);
+        });
+
         if (!nextLevel) {
             // Game completed! All levels done
             console.log('🎉 All levels completed!');
@@ -376,14 +438,16 @@ async function initGame() {
             return;
         }
 
-        // Show level intro animation
+        // ── STEP 3: Level Intro Animation ────────────────────────
         showLevelIntro(nextLevel, () => {
+            // Remove black overlay now that the level is fully active
+            blackOverlay.alive = false;
             // Update spawn config from new level
             currentSpawnConfig = nextLevel.spawnConfig;
             MAX_ENEMIES = currentSpawnConfig.maxEnemies;
             SPAWN_DELAY = currentSpawnConfig.spawnDelay;
             KILLS_TO_COMPLETE = currentSpawnConfig.killsToComplete;
-            
+
             // Reset counters for new level
             levelKills = 0;
             enemySerial = 0;
@@ -511,7 +575,7 @@ async function initGame() {
         () => {
             // Don't spawn during game over, level transition, or before game is ready
             if (gameOverShown || levelTransitionInProgress || !gameReady) return false;
-            // Don't spawn if level transition animation is playing
+            // Don't spawn if any transition/celebration animation is playing
             if (levelTransitionAnimation && levelTransitionAnimation.alive) return false;
             // Purge dead enemies and count kills
             for (let i = enemies.length - 1; i >= 0; i--) {
@@ -522,12 +586,20 @@ async function initGame() {
             }
             // Check if level completed (after loop to avoid mutating array mid-iteration)
             checkLevelCompletion();
-            return enemies.length < MAX_ENEMIES;
+            return enemies.length < MAX_ENEMIES && !levelTransitionInProgress;
         },
         async () => {
+            // Double-check: abort if a transition started while we were waiting
+            if (levelTransitionInProgress || gameOverShown) return;
             const pick = pickEnemyType();
             enemySerial++;
             const enemy = await SPAWN_FNS[pick.type]();
+            // Triple-check: if transition started during async spawn, discard enemy
+            if (levelTransitionInProgress || gameOverShown) {
+                enemy.hp = 0;
+                if (enemy.kill) enemy.kill();
+                return;
+            }
             game.addEntity(enemy);
             enemies.push(enemy);
             const label = `${pick.type.toUpperCase()} ${enemySerial}`;

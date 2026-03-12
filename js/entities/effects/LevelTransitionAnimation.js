@@ -497,6 +497,10 @@ export class LevelTransitionAnimation extends Entity {
     }
 
     #drawBackground(ctx) {
+        // Solid black base — prevents level entities from showing through
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, this.#width, this.#height);
+
         // Draw level background image
         if (this.#bgLoaded) {
             ctx.drawImage(this.#bgImage, 0, 0, this.#width, this.#height);
