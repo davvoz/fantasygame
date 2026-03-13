@@ -42,6 +42,12 @@ export class HUD {
         if (this.#characters[index]) this.#characters[index].character = character;
     }
 
+    /** Clear all tracked characters and mage reference. */
+    reset() {
+        this.#characters.length = 0;
+        this.#mage = null;
+    }
+
     draw(ctx) {
         // Remove dead entries, but always keep the first slot (mage)
         this.#characters = this.#characters.filter(

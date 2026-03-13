@@ -89,6 +89,22 @@ export class Game {
         if (idx !== -1) this.#entities.splice(idx, 1);
     }
 
+    /**
+     * Kill all entities except those in the keep set.
+     * Dead entities are pruned on the next update cycle.
+     * @param {Set<object>} [keepSet] - entities to preserve
+     */
+    clearTransientEntities(keepSet = new Set()) {
+        for (const e of this.#entities) {
+            if (keepSet.has(e) || e.alive === false) continue;
+            if (typeof e.kill === 'function') {
+                e.kill();
+            } else {
+                try { e.alive = false; } catch { /* read-only alive */ }
+            }
+        }
+    }
+
     start() {
         this.#gameLoop.start();
     }
